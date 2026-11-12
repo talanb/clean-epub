@@ -89,7 +89,7 @@ class ReplacementDialog(QDialog):
             self.error.setText('Find must not be empty.')
             return
         if self.regex.isChecked():
-            error = validate_regex(find, self.ignore_case.isChecked())
+            error = validate_regex(find, self.ignore_case.isChecked(), self.replace.text())
             if error:
                 self.error.setText('Invalid regular expression: %s' % error)
                 return

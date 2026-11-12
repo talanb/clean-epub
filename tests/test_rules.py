@@ -4,7 +4,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'plugin'))
 
-from rules import PackError, collect_rules, export_pack, install_pack, parse_pack  # noqa: E402
+from rules import PackError, validate_regex, collect_rules, export_pack, install_pack, parse_pack  # noqa: E402
 
 
 def rule(find, enabled=True):
@@ -46,11 +46,20 @@ class ParsePackTest(unittest.TestCase):
             '{"name": "X", "replacements": [{"find": "a", "replace": 1}]}',
             '{"name": "X", "replacements": [{"find": "a", "regex": "yes"}]}',
             '{"name": "X", "replacements": [{"find": "(", "regex": true}]}',
+            '{"name": "X", "replacements": [{"find": "a", "replace": "\\\\1", "regex": true}]}',
             '{"name": "X", "remove_files": [{"pattern": 3}]}',
         ]
         for text in bad:
             with self.assertRaises(PackError, msg=text):
                 parse_pack(text)
+
+
+class ValidateRegexTest(unittest.TestCase):
+
+    def test_bad_template_rejected(self):
+        self.assertIsNotNone(validate_regex('a', False, r'\1'))
+        self.assertIsNotNone(validate_regex('(a)', False, r'\g<x>'))
+        self.assertIsNone(validate_regex('(a)', False, r'\1'))
 
 
 class InstallExportTest(unittest.TestCase):

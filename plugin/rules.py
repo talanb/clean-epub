@@ -11,11 +11,12 @@ class PackError(ValueError):
     pass
 
 
-def validate_regex(find, ignore_case):
-    """Return an error message if find is not a valid regex, else None."""
+def validate_regex(find, ignore_case, replace=''):
+    """Return an error message if find or its replacement template is invalid, else None."""
     try:
-        re.compile(find, re.IGNORECASE if ignore_case else 0)
-    except re.error as err:
+        # sub() parses the template up front, so bad group references fail here
+        re.compile(find, re.IGNORECASE if ignore_case else 0).sub(replace, '')
+    except (re.error, IndexError) as err:
         return str(err)
     return None
 
@@ -56,7 +57,7 @@ def _replacement(rule):
         'ignore_case': _flag(rule.get('ignore_case'), 'Replacement "ignore_case" for %r' % find),
     }
     if normalized['regex']:
-        error = validate_regex(find, normalized['ignore_case'])
+        error = validate_regex(find, normalized['ignore_case'], normalized['replace'])
         if error:
             raise PackError('Invalid regex %r: %s' % (find, error))
     return normalized

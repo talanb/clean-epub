@@ -42,7 +42,7 @@ def protected_paths(container_xml):
         return paths
     try:
         root = ElementTree.fromstring(container_xml)
-    except ElementTree.ParseError:
+    except (ElementTree.ParseError, LookupError, ValueError):
         return paths
     for elem in root.iter():
         if elem.tag.endswith('rootfile') and elem.get('full-path'):
@@ -59,8 +59,11 @@ def _compile_replacements(replacements):
         flags = re.IGNORECASE if rule.get('ignore_case') else 0
         if rule.get('regex'):
             try:
-                compiled.append((re.compile(find, flags), replace))
-            except re.error as err:
+                regex = re.compile(find, flags)
+                # sub() parses the template up front, so bad group references fail here
+                regex.sub(replace, '')
+                compiled.append((regex, replace))
+            except (re.error, IndexError) as err:
                 print('EPUB Scrubber: skipping invalid regex %r: %s' % (find, err))
         else:
             # A function replacement keeps backslashes in literal text literal

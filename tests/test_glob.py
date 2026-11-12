@@ -57,6 +57,7 @@ class ProtectedPathsTest(unittest.TestCase):
     def test_protected_paths_bad_xml(self):
         self.assertEqual(protected_paths(b'<not xml'), BASE)
         self.assertEqual(protected_paths(None), BASE)
+        self.assertEqual(protected_paths(b'<?xml version="1.0" encoding="x-bogus"?><c/>'), BASE)
 
 
 if __name__ == '__main__':

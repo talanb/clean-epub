@@ -107,6 +107,22 @@ class CleanEpubTest(unittest.TestCase):
         out = self.chapter_after([R('(', regex=True), R('Chapter', 'X')])
         self.assertIn('X text.', out)
 
+    def test_bad_replacement_template_skipped(self):
+        make_epub(self.src, [('oceanofpdf.com', 'x'), ('OPS/c01.xhtml', CHAPTER.format(footer=''))])
+        rules = [R('nomatch', r'\1', regex=True), R('Chapter', 'X')]
+        self.assertTrue(clean_epub(self.src, self.dst, rules, ['oceanofpdf.com']))
+        out = read_all(self.dst)
+        self.assertNotIn('oceanofpdf.com', out)
+        self.assertIn(b'X text.', out['OPS/c01.xhtml'])
+
+    def test_bad_container_still_cleans(self):
+        make_epub(self.src, [
+            ('META-INF/container.xml', '<?xml version="1.0" encoding="x-bogus"?><container/>'),
+            ('a.info', 'x'),
+        ])
+        self.assertTrue(clean_epub(self.src, self.dst, [], ['**/*.info']))
+        self.assertEqual(set(read_all(self.dst)), {'mimetype', 'META-INF/container.xml'})
+
     def test_removes_matching_files(self):
         make_epub(self.src, [
             ('a.info', 'x'),
