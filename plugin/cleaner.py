@@ -5,15 +5,56 @@ Kept free of calibre imports so it can be tested with plain Python.
 
 import re
 import zipfile
+from xml.etree import ElementTree
 
 MARKER_FILE = 'oceanofpdf.com'
 CONTENT_EXTENSIONS = ('.xhtml', '.html', '.htm')
+CONTAINER_FILE = 'META-INF/container.xml'
+ALWAYS_PROTECTED = frozenset({'mimetype', CONTAINER_FILE})
 
 FOOTER_RE = re.compile(
     r'<div\b[^>]*>\s*<p\b[^>]*>\s*'
     r'<a\b[^>]*href\s*=\s*["\']https?://(?:www\.)?oceanofpdf\.com/?["\'][^>]*>\s*'
     r'<i\b[^>]*>\s*OceanofPDF\.com\s*</i>\s*</a>\s*</p>\s*</div>',
     re.IGNORECASE)
+
+
+def glob_to_regex(pattern):
+    """Compile a path glob: * and ? stay within a segment, **/ spans directories."""
+    out = []
+    i = 0
+    while i < len(pattern):
+        if pattern.startswith('**/', i):
+            out.append('(?:.*/)?')
+            i += 3
+        elif pattern.startswith('**', i):
+            out.append('.*')
+            i += 2
+        elif pattern[i] == '*':
+            out.append('[^/]*')
+            i += 1
+        elif pattern[i] == '?':
+            out.append('[^/]')
+            i += 1
+        else:
+            out.append(re.escape(pattern[i]))
+            i += 1
+    return re.compile(''.join(out))
+
+
+def protected_paths(container_xml):
+    """Paths that must never be removed: mimetype, container.xml and its rootfiles."""
+    paths = set(ALWAYS_PROTECTED)
+    if container_xml is None:
+        return paths
+    try:
+        root = ElementTree.fromstring(container_xml)
+    except ElementTree.ParseError:
+        return paths
+    for elem in root.iter():
+        if elem.tag.endswith('rootfile') and elem.get('full-path'):
+            paths.add(elem.get('full-path'))
+    return paths
 
 
 def _clean_content(data):
