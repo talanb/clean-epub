@@ -8,15 +8,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'plugin'))
 
 from cleaner import clean_epub  # noqa: E402
 
-ROOT = os.path.join(os.path.dirname(__file__), '..')
-SAMPLE = os.path.join(ROOT, '12_Months_to_Retire_Right_-_Glen_James.epub')
-
-FOOTER = ('<div style="float: none; margin: 10px 0px 10px 0px; text-align: center;">'
-          '<p><a href="https://oceanofpdf.com"><i>OceanofPDF.com</i></a></p></div>')
-
 CHAPTER = ('<?xml version="1.0" encoding="UTF-8"?>\n'
            '<html xmlns="http://www.w3.org/1999/xhtml"><body>\n'
            '<p>Chapter text.</p>\n{footer}</body>\n</html>')
+
+CONTAINER = ('<?xml version="1.0"?>\n'
+             '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">'
+             '<rootfiles><rootfile full-path="OPS/content.opf" '
+             'media-type="application/oebps-package+xml"/></rootfiles></container>')
 
 
 def make_epub(path, entries):
@@ -31,6 +30,10 @@ def read_all(path):
         return {i.filename: zf.read(i) for i in zf.infolist()}
 
 
+def R(find, replace='', regex=False, ignore_case=False):
+    return {'find': find, 'replace': replace, 'regex': regex, 'ignore_case': ignore_case}
+
+
 class CleanEpubTest(unittest.TestCase):
 
     def setUp(self):
@@ -41,55 +44,92 @@ class CleanEpubTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def test_removes_footer_and_root_marker(self):
-        make_epub(self.src, [
-            ('oceanofpdf.com', 'oceanofpdf.com\n'),
-            ('OPS/c01.xhtml', CHAPTER.format(footer=FOOTER)),
-            ('OPS/style.css', 'p { margin: 0 }'),
-        ])
-        self.assertTrue(clean_epub(self.src, self.dst))
-        out = read_all(self.dst)
-        self.assertNotIn('oceanofpdf.com', out)
-        self.assertEqual(out['OPS/c01.xhtml'].decode('utf-8'), CHAPTER.format(footer=''))
-        self.assertEqual(out['OPS/style.css'], b'p { margin: 0 }')
+    def chapter_after(self, replacements, chapter=CHAPTER.format(footer='')):
+        make_epub(self.src, [('OPS/c01.xhtml', chapter)])
+        self.assertTrue(clean_epub(self.src, self.dst, replacements, []))
+        return read_all(self.dst)['OPS/c01.xhtml'].decode('utf-8')
 
     def test_mimetype_stays_first_and_stored(self):
-        make_epub(self.src, [('OPS/c01.xhtml', CHAPTER.format(footer=FOOTER))])
-        clean_epub(self.src, self.dst)
+        make_epub(self.src, [('OPS/c01.xhtml', CHAPTER.format(footer=''))])
+        clean_epub(self.src, self.dst, [R('Chapter', 'X')], [])
         with zipfile.ZipFile(self.dst) as zf:
             first = zf.infolist()[0]
         self.assertEqual(first.filename, 'mimetype')
         self.assertEqual(first.compress_type, zipfile.ZIP_STORED)
 
-    def test_tolerates_small_footer_variations(self):
-        variant = ("<div style='text-align:center'>\n  <p>\n"
-                   "<a href='http://www.OceanOfPDF.com/'>  <i>OceanofPDF.com</i></a></p>\n</div>")
-        make_epub(self.src, [('OPS/c01.xhtml', CHAPTER.format(footer=variant))])
-        self.assertTrue(clean_epub(self.src, self.dst))
-        self.assertNotIn(b'oceanofpdf', read_all(self.dst)['OPS/c01.xhtml'].lower())
+    def test_literal_replacement(self):
+        self.assertIn('<p>Body.</p>', self.chapter_after([R('Chapter text.', 'Body.')]))
 
-    def test_leaves_other_links_alone(self):
-        other = ('<div style="text-align: center;"><p><a href="https://example.com">'
-                 '<i>Example.com</i></a></p></div>')
-        make_epub(self.src, [('OPS/c01.xhtml', CHAPTER.format(footer=other))])
-        self.assertFalse(clean_epub(self.src, self.dst))
+    def test_literal_is_not_regex(self):
+        self.assertEqual(self.chapter_after([R('a.c')], chapter='abc a.c'), 'abc ')
 
-    def test_clean_epub_is_untouched(self):
+    def test_literal_replace_has_no_backrefs(self):
+        self.assertIn(r'\1', self.chapter_after([R('Chapter', r'\1')]))
+
+    def test_regex_with_backref(self):
+        out = self.chapter_after([R(r'<p>(\w+) text\.</p>', r'<p>\1!</p>', regex=True)])
+        self.assertIn('<p>Chapter!</p>', out)
+
+    def test_ignore_case(self):
+        self.assertIn('Ch text.', self.chapter_after([R('CHAPTER', 'Ch', ignore_case=True)]))
+        self.assertFalse(clean_epub(self.src, self.dst, [R('CHAPTER', 'Ch')], []))
+
+    def test_rules_apply_in_order(self):
+        out = self.chapter_after([R('Chapter', 'X'), R('X text', 'Y')])
+        self.assertIn('<p>Y.</p>', out)
+
+    def test_only_html_entries_touched(self):
+        make_epub(self.src, [
+            ('OPS/C1.XHTML', CHAPTER.format(footer='')),
+            ('OPS/style.css', 'p { margin: 0 }'),
+        ])
+        self.assertTrue(clean_epub(self.src, self.dst, [R('<p>')], []))
+        out = read_all(self.dst)
+        self.assertEqual(out['OPS/style.css'], b'p { margin: 0 }')
+        self.assertNotIn(b'<p>', out['OPS/C1.XHTML'])
+
+    def test_non_utf8_entry_untouched(self):
+        make_epub(self.src, [
+            ('OPS/c01.xhtml', CHAPTER.format(footer='')),
+            ('OPS/c02.xhtml', b'\xff\xfeChapter'),
+        ])
+        self.assertTrue(clean_epub(self.src, self.dst, [R('Chapter', 'X')], []))
+        out = read_all(self.dst)
+        self.assertEqual(out['OPS/c02.xhtml'], b'\xff\xfeChapter')
+        self.assertIn(b'X text.', out['OPS/c01.xhtml'])
+
+    def test_identical_result_is_no_change(self):
         make_epub(self.src, [('OPS/c01.xhtml', CHAPTER.format(footer=''))])
-        self.assertFalse(clean_epub(self.src, self.dst))
+        self.assertFalse(clean_epub(self.src, self.dst, [R('Chapter', 'Chapter')], []))
         self.assertFalse(os.path.exists(self.dst))
 
-    @unittest.skipUnless(os.path.exists(SAMPLE), 'sample epub not present')
-    def test_sample_book(self):
-        self.assertTrue(clean_epub(SAMPLE, self.dst))
-        before, after = read_all(SAMPLE), read_all(self.dst)
-        self.assertEqual(set(before) - set(after), {'oceanofpdf.com'})
-        for name, data in after.items():
-            self.assertNotIn(b'oceanofpdf', data.lower(), name)
-            if name.endswith('.xhtml'):
-                self.assertEqual(data, before[name].replace(FOOTER.encode('utf-8'), b''), name)
-            else:
-                self.assertEqual(data, before[name], name)
+    def test_bad_regex_skipped(self):
+        out = self.chapter_after([R('(', regex=True), R('Chapter', 'X')])
+        self.assertIn('X text.', out)
+
+    def test_removes_matching_files(self):
+        make_epub(self.src, [
+            ('a.info', 'x'),
+            ('OPS/b.info', 'x'),
+            ('OPS/c01.xhtml', CHAPTER.format(footer='')),
+        ])
+        self.assertTrue(clean_epub(self.src, self.dst, [], ['**/*.info']))
+        self.assertEqual(set(read_all(self.dst)), {'mimetype', 'OPS/c01.xhtml'})
+
+    def test_protected_files_never_removed(self):
+        make_epub(self.src, [
+            ('META-INF/container.xml', CONTAINER),
+            ('OPS/content.opf', '<package/>'),
+            ('OPS/c01.xhtml', CHAPTER.format(footer='')),
+        ])
+        self.assertTrue(clean_epub(self.src, self.dst, [], ['**']))
+        self.assertEqual(set(read_all(self.dst)),
+                         {'mimetype', 'META-INF/container.xml', 'OPS/content.opf'})
+
+    def test_no_rules_no_change(self):
+        make_epub(self.src, [('OPS/c01.xhtml', CHAPTER.format(footer=''))])
+        self.assertFalse(clean_epub(self.src, self.dst, [], []))
+        self.assertFalse(os.path.exists(self.dst))
 
 
 if __name__ == '__main__':

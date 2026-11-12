@@ -1,4 +1,4 @@
-"""Strip OceanofPDF.com branding from an EPUB.
+"""Scrub unwanted text and files from an EPUB using user-supplied rules.
 
 Kept free of calibre imports so it can be tested with plain Python.
 """
@@ -7,16 +7,9 @@ import re
 import zipfile
 from xml.etree import ElementTree
 
-MARKER_FILE = 'oceanofpdf.com'
 CONTENT_EXTENSIONS = ('.xhtml', '.html', '.htm')
 CONTAINER_FILE = 'META-INF/container.xml'
 ALWAYS_PROTECTED = frozenset({'mimetype', CONTAINER_FILE})
-
-FOOTER_RE = re.compile(
-    r'<div\b[^>]*>\s*<p\b[^>]*>\s*'
-    r'<a\b[^>]*href\s*=\s*["\']https?://(?:www\.)?oceanofpdf\.com/?["\'][^>]*>\s*'
-    r'<i\b[^>]*>\s*OceanofPDF\.com\s*</i>\s*</a>\s*</p>\s*</div>',
-    re.IGNORECASE)
 
 
 def glob_to_regex(pattern):
@@ -57,32 +50,60 @@ def protected_paths(container_xml):
     return paths
 
 
-def _clean_content(data):
-    """Return the entry's bytes with footers removed, or None if it has none."""
+def _compile_replacements(replacements):
+    """Return (regex, replacement) pairs, skipping rules whose regex is invalid."""
+    compiled = []
+    for rule in replacements:
+        find = rule.get('find', '')
+        replace = rule.get('replace', '')
+        flags = re.IGNORECASE if rule.get('ignore_case') else 0
+        if rule.get('regex'):
+            try:
+                compiled.append((re.compile(find, flags), replace))
+            except re.error as err:
+                print('EPUB Scrubber: skipping invalid regex %r: %s' % (find, err))
+        else:
+            # A function replacement keeps backslashes in literal text literal
+            compiled.append((re.compile(re.escape(find), flags), lambda m, r=replace: r))
+    return compiled
+
+
+def _clean_content(data, replacements):
+    """Return the entry's bytes with replacements applied, or None if unchanged."""
     try:
         text = data.decode('utf-8')
     except UnicodeDecodeError:
         return None
-    cleaned, count = FOOTER_RE.subn('', text)
-    return cleaned.encode('utf-8') if count else None
+    cleaned = text
+    for regex, replace in replacements:
+        cleaned = regex.sub(replace, cleaned)
+    return cleaned.encode('utf-8') if cleaned != text else None
 
 
-def clean_epub(src_path, dst_path):
+def clean_epub(src_path, dst_path, replacements, remove_patterns):
     """Write a cleaned copy of src_path to dst_path.
 
-    Returns True if anything was removed. If the book has no OceanofPDF
-    branding, returns False and dst_path is not written.
+    Returns True if anything was removed or changed. Otherwise returns
+    False and dst_path is not written.
     """
+    compiled = _compile_replacements(replacements)
+    removals = [glob_to_regex(p) for p in remove_patterns]
     with zipfile.ZipFile(src_path) as src:
+        try:
+            container = src.read(CONTAINER_FILE)
+        except KeyError:
+            container = None
+        protected = protected_paths(container)
         entries = []
         changed = False
         for info in src.infolist():
-            if info.filename == MARKER_FILE:
+            name = info.filename
+            if name not in protected and any(r.fullmatch(name) for r in removals):
                 changed = True
                 continue
             data = src.read(info)
-            if info.filename.lower().endswith(CONTENT_EXTENSIONS):
-                cleaned = _clean_content(data)
+            if compiled and name.lower().endswith(CONTENT_EXTENSIONS):
+                cleaned = _clean_content(data, compiled)
                 if cleaned is not None:
                     data = cleaned
                     changed = True
