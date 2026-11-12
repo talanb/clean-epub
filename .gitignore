@@ -1,0 +1,9 @@
+# Sample books and their unpacked contents stay local
+*.epub
+/META-INF/
+/OPS/
+/mimetype
+/oceanofpdf.com
+
+dist/
+__pycache__/
