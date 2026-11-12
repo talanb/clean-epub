@@ -4,7 +4,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'plugin'))
 
-from rules import PackError, validate_regex, collect_rules, export_pack, install_pack, parse_pack  # noqa: E402
+from rules import PackError, pattern_warning, validate_regex, collect_rules, export_pack, install_pack, parse_pack  # noqa: E402
 
 
 def rule(find, enabled=True):
@@ -40,6 +40,7 @@ class ParsePackTest(unittest.TestCase):
             '"x"',
             '{}',
             '{"name": ""}',
+            '{"name": "   "}',
             '{"name": "X", "replacements": {}}',
             '{"name": "X", "replacements": ["a"]}',
             '{"name": "X", "replacements": [{"find": ""}]}',
@@ -60,6 +61,17 @@ class ValidateRegexTest(unittest.TestCase):
         self.assertIsNotNone(validate_regex('a', False, r'\1'))
         self.assertIsNotNone(validate_regex('(a)', False, r'\g<x>'))
         self.assertIsNone(validate_regex('(a)', False, r'\1'))
+
+
+class PatternWarningTest(unittest.TestCase):
+
+    def test_leading_slash_warns(self):
+        for pattern in ('/oceanofpdf.com', './oceanofpdf.com', '/**/*.info'):
+            self.assertIsNotNone(pattern_warning(pattern), pattern)
+
+    def test_normal_patterns_do_not_warn(self):
+        for pattern in ('oceanofpdf.com', '**/*.info', 'OPS/a.info', '.hidden'):
+            self.assertIsNone(pattern_warning(pattern), pattern)
 
 
 class InstallExportTest(unittest.TestCase):

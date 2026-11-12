@@ -9,7 +9,7 @@ from qt.core import (
     QWidget)
 
 from calibre_plugins.epub_scrubber.rules import (
-    PackError, export_pack, install_pack, parse_pack, validate_regex)
+    PackError, export_pack, install_pack, parse_pack, pattern_warning, validate_regex)
 
 prefs = JSONConfig('plugins/epub_scrubber')
 prefs.defaults['packs'] = []
@@ -205,6 +205,9 @@ class ConfigWidget(QWidget):
                 return
         self.packs = install_pack(self.packs, pack)
         self.refresh_packs()
+        warnings = [w for w in (pattern_warning(r['pattern']) for r in pack['remove_files']) if w]
+        if warnings:
+            QMessageBox.warning(self, 'Pack installed with warnings', '\n\n'.join(warnings))
 
     def remove_pack(self):
         row = self.selected_pack()
@@ -309,13 +312,21 @@ class ConfigWidget(QWidget):
             table.selectRow(select)
 
     def ask_pattern(self, current=''):
-        pattern, ok = QInputDialog.getText(
-            self, 'File removal', 'Pattern (e.g. **/*.info):', text=current)
-        while ok and not pattern.strip():
-            QMessageBox.warning(self, 'File removal', 'Pattern must not be empty.')
+        while True:
             pattern, ok = QInputDialog.getText(
                 self, 'File removal', 'Pattern (e.g. **/*.info):', text=current)
-        return pattern.strip() if ok else None
+            if not ok:
+                return None
+            pattern = current = pattern.strip()
+            if not pattern:
+                QMessageBox.warning(self, 'File removal', 'Pattern must not be empty.')
+                continue
+            warning = pattern_warning(pattern)
+            if warning:
+                answer = QMessageBox.question(self, 'File removal', warning + '\n\nUse it anyway?')
+                if answer != QMessageBox.StandardButton.Yes:
+                    continue
+            return pattern
 
     def add_remove_file(self):
         pattern = self.ask_pattern()

@@ -21,10 +21,18 @@ def validate_regex(find, ignore_case, replace=''):
     return None
 
 
+def pattern_warning(pattern):
+    """Return a warning if pattern can never match a path inside an EPUB, else None."""
+    if pattern.startswith(('/', './')):
+        return ("Pattern '%s' starts with '%s', but paths inside a book have no leading "
+                "'/' or './', so it will never match." % (pattern, '/' if pattern[0] == '/' else './'))
+    return None
+
+
 def _string(value, what, required=False):
     if value is None and not required:
         return ''
-    if not isinstance(value, str) or (required and not value):
+    if not isinstance(value, str) or (required and not value.strip()):
         raise PackError('%s must be a non-empty string' % what if required
                         else '%s must be a string' % what)
     return value
