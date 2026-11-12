@@ -21,9 +21,9 @@ def m(pattern, path):
 class GlobTest(unittest.TestCase):
 
     def test_double_star_any_depth(self):
-        for path in ('oceanofpdf.com', 'OPS/oceanofpdf.com', 'a/b/oceanofpdf.com'):
-            self.assertTrue(m('**/oceanofpdf.com', path), path)
-        self.assertFalse(m('**/oceanofpdf.com', 'OPS/xoceanofpdf.com'))
+        for path in ('marker.txt', 'OPS/marker.txt', 'a/b/marker.txt'):
+            self.assertTrue(m('**/marker.txt', path), path)
+        self.assertFalse(m('**/marker.txt', 'OPS/xmarker.txt'))
 
     def test_double_star_extension(self):
         self.assertTrue(m('**/*.info', 'a.info'))
@@ -31,8 +31,8 @@ class GlobTest(unittest.TestCase):
         self.assertFalse(m('**/*.info', 'a.info.bak'))
 
     def test_root_only(self):
-        self.assertFalse(m('oceanofpdf.com', 'OPS/oceanofpdf.com'))
-        self.assertTrue(m('oceanofpdf.com', 'oceanofpdf.com'))
+        self.assertFalse(m('marker.txt', 'OPS/marker.txt'))
+        self.assertTrue(m('marker.txt', 'marker.txt'))
 
     def test_star_does_not_cross_slash(self):
         self.assertFalse(m('*.info', 'OPS/a.info'))

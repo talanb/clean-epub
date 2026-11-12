@@ -10,7 +10,7 @@ class EpubScrubber(FileTypePlugin):
                    'library, using your own rules or installed packs.')
     supported_platforms = ['windows', 'osx', 'linux']
     author = 'Todd Breiholz'
-    version = (2, 0, 0)
+    version = (1, 0, 0)
     minimum_calibre_version = (5, 13, 0)
     file_types = {'epub'}
     on_import = True

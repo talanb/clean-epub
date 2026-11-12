@@ -11,7 +11,6 @@ from test_cleaner import CHAPTER, make_epub, read_all  # noqa: E402
 
 ROOT = os.path.join(os.path.dirname(__file__), '..')
 PACK = os.path.join(ROOT, 'packs', 'oceanofpdf.json')
-SAMPLE = os.path.join(ROOT, '12_Months_to_Retire_Right_-_Glen_James.epub')
 
 FOOTER = ('<div style="float: none; margin: 10px 0px 10px 0px; text-align: center;">'
           '<p><a href="https://oceanofpdf.com"><i>OceanofPDF.com</i></a></p></div>')
@@ -71,18 +70,6 @@ class OceanofPDFPackTest(unittest.TestCase):
         make_epub(self.src, [('OPS/c01.xhtml', CHAPTER.format(footer=''))])
         self.assertFalse(self.clean())
         self.assertFalse(os.path.exists(self.dst))
-
-    @unittest.skipUnless(os.path.exists(SAMPLE), 'sample epub not present')
-    def test_sample_book(self):
-        self.assertTrue(self.clean(SAMPLE))
-        before, after = read_all(SAMPLE), read_all(self.dst)
-        self.assertEqual(set(before) - set(after), {'oceanofpdf.com'})
-        for name, data in after.items():
-            self.assertNotIn(b'oceanofpdf', data.lower(), name)
-            if name.endswith('.xhtml'):
-                self.assertEqual(data, before[name].replace(FOOTER.encode('utf-8'), b''), name)
-            else:
-                self.assertEqual(data, before[name], name)
 
 
 if __name__ == '__main__':

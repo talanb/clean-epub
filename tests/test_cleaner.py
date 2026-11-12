@@ -108,11 +108,11 @@ class CleanEpubTest(unittest.TestCase):
         self.assertIn('X text.', out)
 
     def test_bad_replacement_template_skipped(self):
-        make_epub(self.src, [('oceanofpdf.com', 'x'), ('OPS/c01.xhtml', CHAPTER.format(footer=''))])
+        make_epub(self.src, [('marker.txt', 'x'), ('OPS/c01.xhtml', CHAPTER.format(footer=''))])
         rules = [R('nomatch', r'\1', regex=True), R('Chapter', 'X')]
-        self.assertTrue(clean_epub(self.src, self.dst, rules, ['oceanofpdf.com']))
+        self.assertTrue(clean_epub(self.src, self.dst, rules, ['marker.txt']))
         out = read_all(self.dst)
-        self.assertNotIn('oceanofpdf.com', out)
+        self.assertNotIn('marker.txt', out)
         self.assertIn(b'X text.', out['OPS/c01.xhtml'])
 
     def test_bad_container_still_cleans(self):

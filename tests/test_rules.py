@@ -66,11 +66,11 @@ class ValidateRegexTest(unittest.TestCase):
 class PatternWarningTest(unittest.TestCase):
 
     def test_leading_slash_warns(self):
-        for pattern in ('/oceanofpdf.com', './oceanofpdf.com', '/**/*.info'):
+        for pattern in ('/marker.txt', './marker.txt', '/**/*.info'):
             self.assertIsNotNone(pattern_warning(pattern), pattern)
 
     def test_normal_patterns_do_not_warn(self):
-        for pattern in ('oceanofpdf.com', '**/*.info', 'OPS/a.info', '.hidden'):
+        for pattern in ('marker.txt', '**/*.info', 'OPS/a.info', '.hidden'):
             self.assertIsNone(pattern_warning(pattern), pattern)
 
 

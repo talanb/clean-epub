@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Turn the hardcoded "Clean Ocean" calibre plugin into "EPUB Scrubber", driven by user rules and installable packs.
+**Goal:** Build "EPUB Scrubber", a calibre plugin that cleans EPUBs on import using user rules and installable packs.
 
-**Architecture:** `cleaner.py` becomes a generic, calibre-free EPUB rewriter (replacement rules + glob file removal). A new calibre-free `rules.py` handles pack parsing/validation, install/export, and assembling the active rule list from prefs. `config.py` holds the calibre prefs and Qt preferences widget; `__init__.py` wires it together on import.
+**Architecture:** `cleaner.py` is a generic, calibre-free EPUB rewriter (replacement rules + glob file removal). A calibre-free `rules.py` handles pack parsing/validation, install/export, and assembling the active rule list from prefs. `config.py` holds the calibre prefs and Qt preferences widget; `__init__.py` wires it together on import.
 
 **Tech Stack:** Python 3 stdlib (`zipfile`, `re`, `json`, `xml.etree`), calibre plugin API (`FileTypePlugin`, `JSONConfig`, `qt.core`), `unittest`.
 
@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Plugin name `EPUB Scrubber`; class `EpubScrubber`; import name `epub_scrubber`; version `(2, 0, 0)`; `minimum_calibre_version = (5, 13, 0)` (first with `qt.core`).
+- Plugin name `EPUB Scrubber`; class `EpubScrubber`; import name `epub_scrubber`; version `(1, 0, 0)`; `minimum_calibre_version = (5, 13, 0)` (first with `qt.core`).
 - Prefs: `JSONConfig('plugins/epub_scrubber')`, defaults `{'packs': [], 'replacements': [], 'remove_files': []}`.
 - `cleaner.py` and `rules.py` import nothing from calibre or Qt; tests run with plain Python.
 - Replacement rules apply only to entries ending `.xhtml`/`.html`/`.htm` (case-insensitive), decoded UTF-8; undecodable entries untouched.
@@ -42,9 +42,9 @@
 - Produces: `glob_to_regex(pattern: str) -> re.Pattern` (full-match regex); `protected_paths(container_xml: bytes | None) -> set[str]`.
 
 - [ ] **Step 1: Write failing tests** in `tests/test_glob.py` (same `sys.path` insert as `tests/test_cleaner.py`), helper `m(p, path) = bool(glob_to_regex(p).fullmatch(path))`:
-  - `test_double_star_any_depth`: `m('**/oceanofpdf.com', x)` True for `'oceanofpdf.com'`, `'OPS/oceanofpdf.com'`, `'a/b/oceanofpdf.com'`; False for `'OPS/xoceanofpdf.com'`.
+  - `test_double_star_any_depth`: `m('**/marker.txt', x)` True for `'marker.txt'`, `'OPS/marker.txt'`, `'a/b/marker.txt'`; False for `'OPS/xmarker.txt'`.
   - `test_double_star_extension`: `m('**/*.info', ...)` True for `'a.info'`, `'OPS/x/a.info'`; False for `'a.info.bak'`.
-  - `test_root_only`: `m('oceanofpdf.com', 'OPS/oceanofpdf.com')` False; `m('oceanofpdf.com', 'oceanofpdf.com')` True.
+  - `test_root_only`: `m('marker.txt', 'OPS/marker.txt')` False; `m('marker.txt', 'marker.txt')` True.
   - `test_star_does_not_cross_slash`: `m('*.info', 'OPS/a.info')` False; `m('OPS/*.info', 'OPS/a.info')` True.
   - `test_question_and_literals`: `m('a?.html', 'ab.html')` True; `m('a.html', 'aXhtml')` False (dot is literal).
   - `test_trailing_double_star`: `m('OPS/**', 'OPS/a/b.css')` True.
@@ -63,14 +63,14 @@
 ### Task 2: Generic `clean_epub`
 
 **Files:**
-- Modify: `plugin/cleaner.py` (remove `MARKER_FILE`, `FOOTER_RE`; rewrite `_clean_content`, `clean_epub`; update module docstring to describe generic scrubbing)
-- Test: `tests/test_cleaner.py` (rewrite generic tests; the OceanofPDF parity tests move to Task 3)
+- Modify: `plugin/cleaner.py` (`_clean_content`, `clean_epub`; module docstring describes generic scrubbing)
+- Test: `tests/test_cleaner.py`
 
 **Interfaces:**
 - Consumes: `glob_to_regex`, `protected_paths` (Task 1).
 - Produces: `clean_epub(src_path: str, dst_path: str, replacements: list[dict], remove_patterns: list[str]) -> bool`. Each replacement dict has `find: str`, `replace: str`, `regex: bool`, `ignore_case: bool` (missing keys default `''`/`False`). Returns True and writes `dst_path` iff any entry was removed or any entry's bytes changed; otherwise returns False and does not write `dst_path`.
 
-- [ ] **Step 1: Rewrite `tests/test_cleaner.py`** keeping `make_epub`, `read_all`, `CHAPTER`, setUp/tearDown, and `test_mimetype_stays_first_and_stored`; drop the OceanofPDF-specific tests and `SAMPLE`/`FOOTER` (moved to Task 3). Add, using `R(find, replace='', regex=False, ignore_case=False)` dict helper:
+- [ ] **Step 1: Write `tests/test_cleaner.py`** with helpers `make_epub`, `read_all`, `CHAPTER`, setUp/tearDown, and `test_mimetype_stays_first_and_stored`. Add, using `R(find, replace='', regex=False, ignore_case=False)` dict helper:
   - `test_literal_replacement`: `R('Chapter text.', 'Body.')` → chapter contains `<p>Body.</p>`; returns True.
   - `test_literal_is_not_regex`: `R('a.c')` on text `abc a.c` → `abc ` (only literal removed).
   - `test_literal_replace_has_no_backrefs`: `R('x', r'\1')` → output contains `\1` literally.
@@ -97,7 +97,7 @@
 
 **Files:**
 - Create: `plugin/rules.py`, `packs/oceanofpdf.json`
-- Test: `tests/test_rules.py` (new), `tests/test_oceanofpdf_pack.py` (new; parity tests moved from old `test_cleaner.py`)
+- Test: `tests/test_rules.py` (new), `tests/test_oceanofpdf_pack.py` (new)
 
 **Interfaces:**
 - Consumes: `clean_epub` (Task 2) in the pack test.
@@ -130,17 +130,17 @@
   ```
   and `remove_files: [{"pattern": "**/oceanofpdf.com"}]`.
 
-- [ ] **Step 6: Write `tests/test_oceanofpdf_pack.py`:** loads the pack via `parse_pack`, gets rules via `collect_rules({'packs': [dict(pack, enabled=True)]})`, and ports the old tests verbatim in intent: `test_removes_footer_and_root_marker`, `test_tolerates_small_footer_variations`, `test_leaves_other_links_alone`, `test_clean_epub_is_untouched`, `test_sample_book` (skip if sample absent; same assertions as before). Add `test_removes_nested_marker`: `OPS/oceanofpdf.com` is removed.
+- [ ] **Step 6: Write `tests/test_oceanofpdf_pack.py`:** loads the pack via `parse_pack`, gets rules via `collect_rules({'packs': [dict(pack, enabled=True)]})`, and checks against small generated EPUBs: `test_removes_footer_and_root_marker`, `test_removes_nested_marker` (`OPS/oceanofpdf.com` is removed), `test_tolerates_small_footer_variations`, `test_leaves_other_links_alone`, `test_clean_epub_is_untouched`.
 
-- [ ] **Step 7: Run** `python3 -m unittest discover -s tests -v` — all PASS (sample test runs if the epub is present locally).
+- [ ] **Step 7: Run** `python3 -m unittest discover -s tests -v` — all PASS.
 
 - [ ] **Step 8: Commit** `git add plugin/rules.py packs/ tests/test_rules.py tests/test_oceanofpdf_pack.py && git commit -m "Add packs and the OceanofPDF pack"`
 
-### Task 4: Rename and wire up the plugin
+### Task 4: Wire up the plugin
 
 **Files:**
 - Modify: `plugin/__init__.py`, `build.py`
-- Rename: `plugin/plugin-import-name-clean_ocean.txt` → `plugin/plugin-import-name-epub_scrubber.txt` (`git mv`)
+- Create: `plugin/plugin-import-name-epub_scrubber.txt` (empty)
 - Create: `plugin/config.py` (prefs only in this task; widget in Task 5)
 
 **Interfaces:**
@@ -155,7 +155,7 @@
 
 - [ ] **Step 4: Verify** `python3 build.py` prints `.../dist/epub_scrubber.zip`, and `python3 -c "import zipfile;print(zipfile.ZipFile('dist/epub_scrubber.zip').namelist())"` lists exactly the five files (no `packs/`). `python3 -m unittest discover -s tests -v` still PASS.
 
-- [ ] **Step 5: Commit** `git add -A plugin build.py && git commit -m "Rename plugin to EPUB Scrubber"`
+- [ ] **Step 5: Commit** `git add -A plugin build.py && git commit -m "Wire up the EPUB Scrubber plugin"`
 
 ### Task 5: Preferences UI
 
@@ -180,8 +180,8 @@ All Qt from `qt.core`. Widget edits a working copy of prefs; nothing is persiste
   1. Preferences → Plugins → EPUB Scrubber → Customize opens with three empty sections.
   2. Install `packs/oceanofpdf.json`; it appears enabled; *View rules* shows the regex and `**/oceanofpdf.com`.
   3. Installing a file containing `[]` shows an error and installs nothing.
-  4. Adding an OceanofPDF sample book removes the footers and marker file (open it in the viewer / check with `unzip -l`).
-  5. Disable the pack, add the sample again → book unchanged.
+  4. Adding an EPUB containing the pack's footer and marker file removes both (check with `unzip -l`).
+  5. Disable the pack, add the same EPUB again → book unchanged.
   6. Add a user regex rule `(` → editor refuses it.
   7. Add a user literal rule and a `**/*.info` removal, export, reinstall the export as a pack → rules match.
   8. Cancel the dialog after changes → reopening shows the old state.
