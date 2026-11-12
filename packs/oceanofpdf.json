@@ -1,0 +1,18 @@
+{
+  "name": "OceanofPDF",
+  "description": "Removes OceanofPDF.com footers and marker file.",
+  "version": "1.0.0",
+  "replacements": [
+    {
+      "find": "<div\\b[^>]*>\\s*<p\\b[^>]*>\\s*<a\\b[^>]*href\\s*=\\s*[\"\\']https?://(?:www\\.)?oceanofpdf\\.com/?[\"\\'][^>]*>\\s*<i\\b[^>]*>\\s*OceanofPDF\\.com\\s*</i>\\s*</a>\\s*</p>\\s*</div>",
+      "replace": "",
+      "regex": true,
+      "ignore_case": true
+    }
+  ],
+  "remove_files": [
+    {
+      "pattern": "**/oceanofpdf.com"
+    }
+  ]
+}
