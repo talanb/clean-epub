@@ -19,27 +19,36 @@ while cleaning, the original book is imported, so a book is never lost.
 
 Requires calibre 5.13 or later.
 
-1. Build the plugin zip from this repo:
-
-   ```sh
-   python3 build.py
-   ```
-
-   This writes `dist/epub_scrubber.zip`.
+1. Download `epub_scrubber.zip` from the
+   [latest release](https://github.com/talanb/clean-epub/releases/latest).
+   Don't unzip it; calibre loads the zip as is.
 
 2. In calibre, open **Preferences → Plugins → Load plugin from file**, choose
-   `dist/epub_scrubber.zip`, and restart calibre.
+   `epub_scrubber.zip`, and restart calibre.
 
    Or, from the command line:
 
    ```sh
-   calibre-customize -a dist/epub_scrubber.zip
+   calibre-customize -a epub_scrubber.zip
    ```
 
    On macOS, `calibre-customize` is in `/Applications/calibre.app/Contents/MacOS/`.
 
+To upgrade, install the newer zip the same way; it replaces the old version and
+keeps your settings.
+
 The plugin starts with no rules, so it does nothing until you add rules or
 install a pack.
+
+### Building from source
+
+To install the current code instead of a release, build the zip yourself:
+
+```sh
+python3 build.py
+```
+
+This writes `dist/epub_scrubber.zip`, which you install as above.
 
 ## Usage
 
@@ -63,7 +72,9 @@ are not changed.
   one, edit its JSON file and install it again.
 - **Remove** uninstalls the selected pack.
 
-To get the OceanofPDF cleaning, install `packs/oceanofpdf.json` from this repo.
+To get the OceanofPDF cleaning, download
+[`packs/oceanofpdf.json`](https://raw.githubusercontent.com/talanb/clean-epub/main/packs/oceanofpdf.json)
+from this repo (use your browser's Save As) and install it.
 It removes the OceanofPDF.com footer from every page and the `oceanofpdf.com`
 marker file.
 
