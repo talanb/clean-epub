@@ -1,0 +1,173 @@
+# EPUB Scrubber — design
+
+Date: 2026-11-12
+Status: awaiting approval
+
+## Intent
+
+The plugin currently ("Clean Ocean") hardcodes one job: strip OceanofPDF.com
+footers and the `oceanofpdf.com` marker file from EPUBs on import. Todd wants a
+general tool so future cleanup jobs need no code changes. There is no second use
+case today; this is planning ahead. Rules are data, entered either in the
+plugin's preferences UI or installed as a "pack" — a shareable file holding the
+rules for one use case (OceanofPDF being the first).
+
+## Goals
+
+- Rename the plugin to **EPUB Scrubber**.
+- User-defined **replacement rules**: find → replace, applied to EPUB content.
+- User-defined **file-removal rules**: glob patterns for files to drop from the EPUB.
+- **Packs**: installable rule sets that stay a separate unit (enable/disable/remove
+  as a whole), alongside the user's own rules.
+- The OceanofPDF behaviour is reproduced by an OceanofPDF pack: the same
+  footer regex, and the marker file removed via `**/oceanofpdf.com` (any
+  depth, a slight widening of 1.x's root-only check, following Todd's own
+  example). *(Claude's call.)*
+
+## Non-goals
+
+- Touching CSS, OPF, NCX, or other non-HTML content with replacement rules.
+- Formats other than EPUB.
+- A pack repository, downloads, or auto-update.
+- Editing a pack's rules inside the UI.
+
+## Anti-goals
+
+- Losing or corrupting a book. Any failure must import the original unchanged.
+- Producing an invalid EPUB (mimetype must stay first and stored).
+- Variation-tolerance logic baked into code. All tolerance lives in the rule
+  (regex / ignore-case), per Todd.
+
+## Rules
+
+### Replacement rule
+
+| Field        | Meaning |
+|--------------|---------|
+| `find`       | Text or regex to find. Required, non-empty. |
+| `replace`    | Replacement text. Default `""`. With `regex`, supports Python `re` backreferences (`\1`, `\g<name>`). |
+| `regex`      | bool, default false. If false, `find` is literal. |
+| `ignore_case`| bool, default false. |
+| `enabled`    | bool, default true (only meaningful for the user's own rules). |
+
+Applied to entries whose names end in `.xhtml`, `.html`, `.htm`
+(case-insensitive), decoded as UTF-8. Entries that fail to decode are skipped,
+as today. Rules apply in list order, each to the output of the previous one.
+
+### File-removal rule
+
+| Field     | Meaning |
+|-----------|---------|
+| `pattern` | Glob matched against the full zip entry path (e.g. `OPS/foo.info`). |
+| `enabled` | bool, default true. |
+
+Glob semantics: `*` matches within one path segment, `?` one character,
+`**/` matches zero or more leading directories. So `**/oceanofpdf.com` matches
+`oceanofpdf.com` and `OPS/x/oceanofpdf.com`; `**/*.info` matches every `.info`
+file at any depth; `oceanofpdf.com` matches only the root file. Matching is
+case-sensitive (zip paths are). Implemented by translating the glob to a
+regex ourselves — `fnmatch` lets `*` cross `/` and has no `**`.
+
+`mimetype`, `META-INF/container.xml`, and the OPF package document(s) named as
+rootfiles in `container.xml` are never removed, even if a pattern matches them.
+Beyond that, rules are the user's responsibility: removing a file does not
+update the OPF manifest/spine, and changed HTML is not re-validated. The
+"invalid EPUB" anti-goal means only the zip layout and these protected files.
+*(Claude's call.)*
+
+## Packs
+
+A pack is a UTF-8 JSON file, conventionally `*.json`:
+
+```json
+{
+  "name": "OceanofPDF",
+  "description": "Removes OceanofPDF.com footers and marker file.",
+  "version": "1.0.0",
+  "replacements": [
+    {"find": "<div\\b...", "replace": "", "regex": true, "ignore_case": true}
+  ],
+  "remove_files": [
+    {"pattern": "**/oceanofpdf.com"}
+  ]
+}
+```
+
+`name` is required and is the pack's identity. `description`, `version`,
+`replacements`, `remove_files` are optional (missing lists = empty). Rule
+`enabled` flags inside a pack are ignored; packs are on/off as a whole.
+
+- **Install:** "Install pack…" opens a file picker. The file is validated
+  (valid JSON, has `name`, rules well-formed, every regex compiles). On error,
+  show the reason and install nothing. On success, the parsed pack is stored in
+  the plugin's prefs, so the source file can be deleted afterwards. Installing
+  a pack whose `name` is already installed replaces it (after a confirm prompt),
+  keeping its enabled state.
+- **Manage:** installed packs listed with name, version, description, enabled
+  checkbox, Remove button, and a read-only view of their rules.
+- **Export:** "Export my rules…" writes the user's own *enabled* rules as a
+  pack file (prompts for a name); disabled rules are left out so they can't
+  become active on install. *(Claude's call.)*
+- The OceanofPDF pack ships in the repo at `packs/oceanofpdf.json`. It is not
+  bundled in the plugin zip and not pre-installed (Todd's decision).
+
+## Preferences UI
+
+Calibre plugin config dialog (`is_customizable` / `config_widget` /
+`save_settings`), stored with `calibre.utils.config.JSONConfig`
+(`plugins/epub_scrubber`). Layout:
+
+1. **Packs** — list + Install / Remove / View rules, per-pack enabled checkbox.
+2. **My replacements** — table (enabled, find, replace, regex, ignore case)
+   with Add / Edit / Delete / Move up / Move down.
+3. **My file removals** — table (enabled, pattern) with Add / Edit / Delete.
+4. **Export my rules…** button.
+
+Regexes are validated when a rule is saved in the editor; an invalid regex
+can't be saved.
+
+## Import behaviour
+
+On each EPUB import: collect enabled rules from enabled packs (in install
+order) followed by the user's enabled rules. Run one pass over the zip:
+drop entries matching any removal pattern, apply replacements to HTML entries.
+If nothing changed, return the original path (book untouched). If anything
+changed, write the cleaned EPUB (mimetype first, stored; everything else
+deflated, original dates/attrs preserved — as today). Any exception at any
+point → log traceback and import the original. A rule regex that fails to
+compile at import time is logged and skipped; the remaining rules still run.
+
+## Code structure
+
+- `plugin/cleaner.py` — stays calibre-free and unit-testable. Becomes
+  generic: `clean_epub(src, dst, replacements, remove_patterns) -> bool`, plus
+  glob-to-regex and pack-validation helpers. No OceanofPDF knowledge.
+- `plugin/__init__.py` — `EpubScrubber(FileTypePlugin)`; loads prefs,
+  assembles rules, calls `clean_epub`.
+- `plugin/config.py` — prefs and the Qt config widget (`qt.core` imports).
+- `packs/oceanofpdf.json` — the current `FOOTER_RE` and marker file as a pack.
+- Import name changes to `epub_scrubber`
+  (`plugin-import-name-epub_scrubber.txt`); `build.py` produces
+  `dist/epub_scrubber.zip`. Version 2.0.0.
+- Repo directory rename is Todd's to do if he wants it.
+
+## Testing
+
+- Existing cleaner tests rewritten to load `packs/oceanofpdf.json` and pass its
+  rules to `clean_epub`; they must still pass (incl. the sample-book test),
+  proving parity.
+- New tests: literal vs regex, ignore-case, rule ordering, backreferences,
+  glob matching (`**/x`, `**/*.ext`, root-only, `*` not crossing `/`),
+  protected files, pack validation errors, bad regex skipped at import.
+- UI tested manually in calibre.
+
+## Migration
+
+Users of Clean Ocean 1.x must uninstall it and install EPUB Scrubber, then
+install the OceanofPDF pack to keep the old behaviour. No settings to migrate
+(1.x had none).
+
+## Left to the builder
+
+Widget specifics and dialog layout details, error-message wording, exact
+helper names and module split within the structure above.
