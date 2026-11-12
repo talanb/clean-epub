@@ -116,10 +116,11 @@ class ConfigWidget(QWidget):
         packs_layout = QVBoxLayout(packs_box)
         self.pack_list = QListWidget()
         packs_layout.addWidget(self.pack_list)
-        packs_layout.addLayout(_button_row(
+        pack_buttons = _button_row(
             ('Install pack…', self.install_pack),
             ('Remove', self.remove_pack),
-            ('View rules', self.view_pack)))
+            ('View rules', self.view_pack))
+        packs_layout.addLayout(pack_buttons)
         layout.addWidget(packs_box)
 
         repl_box = QGroupBox('My replacements')
@@ -127,12 +128,13 @@ class ConfigWidget(QWidget):
         self.repl_table = _table(['Enabled', 'Find', 'Replace', 'Regex', 'Ignore case'])
         self.repl_table.itemDoubleClicked.connect(self.edit_replacement)
         repl_layout.addWidget(self.repl_table)
-        repl_layout.addLayout(_button_row(
+        repl_buttons = _button_row(
             ('Add', self.add_replacement),
             ('Edit', self.edit_replacement),
             ('Delete', self.delete_replacement),
             ('Move up', lambda: self.move_replacement(-1)),
-            ('Move down', lambda: self.move_replacement(1))))
+            ('Move down', lambda: self.move_replacement(1)))
+        repl_layout.addLayout(repl_buttons)
         layout.addWidget(repl_box)
 
         files_box = QGroupBox('My file removals')
@@ -140,13 +142,23 @@ class ConfigWidget(QWidget):
         self.files_table = _table(['Enabled', 'Pattern'])
         self.files_table.itemDoubleClicked.connect(self.edit_remove_file)
         files_layout.addWidget(self.files_table)
-        files_layout.addLayout(_button_row(
+        files_buttons = _button_row(
             ('Add', self.add_remove_file),
             ('Edit', self.edit_remove_file),
-            ('Delete', self.delete_remove_file)))
+            ('Delete', self.delete_remove_file))
+        files_layout.addLayout(files_buttons)
         layout.addWidget(files_box)
 
         layout.addLayout(_button_row(('Export my rules…', self.export_rules)))
+
+        # Every button after the first (Install/Add) acts on the selected row
+        self.selection_buttons = [
+            (view, [row.itemAt(i).widget() for i in range(1, row.count() - 1)])
+            for view, row in ((self.pack_list, pack_buttons),
+                              (self.repl_table, repl_buttons),
+                              (self.files_table, files_buttons))]
+        for view, _ in self.selection_buttons:
+            view.itemSelectionChanged.connect(self.update_buttons)
 
         self.refresh_packs()
         self.refresh_replacements()
@@ -168,6 +180,12 @@ class ConfigWidget(QWidget):
         prefs['replacements'] = self.replacements
         prefs['remove_files'] = self.remove_files
 
+    def update_buttons(self):
+        for view, buttons in self.selection_buttons:
+            enabled = bool(view.selectedItems())
+            for button in buttons:
+                button.setEnabled(enabled)
+
     # Packs
 
     def refresh_packs(self):
@@ -182,6 +200,7 @@ class ConfigWidget(QWidget):
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(CHECKED if pack.get('enabled', True) else UNCHECKED)
             self.pack_list.addItem(item)
+        self.update_buttons()
 
     def selected_pack(self):
         row = self.pack_list.currentRow()
@@ -260,6 +279,7 @@ class ConfigWidget(QWidget):
             table.setItem(row, 4, _check_item(rule['ignore_case'], editable=False))
         if select is not None:
             table.selectRow(select)
+        self.update_buttons()
 
     def selected_replacement(self):
         row = self.repl_table.currentRow()
@@ -310,6 +330,7 @@ class ConfigWidget(QWidget):
             table.setItem(row, 1, _text_item(rule['pattern']))
         if select is not None:
             table.selectRow(select)
+        self.update_buttons()
 
     def ask_pattern(self, current=''):
         while True:
